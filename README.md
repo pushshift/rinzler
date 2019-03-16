@@ -17,7 +17,7 @@ Capabilities of Rinzler:
 
 ## What was the reason for creating Rinzler?
 
-Working with big data presents many challenges. I wanted to learn how to program in Golang, so I picked a project that would help make dealing with Big Data fun and exciting. Rinzler is a program with my different purposes but everything at the heart of the program is designed from the ground up to be a Big Data management tool.
+Working with big data presents many challenges. I wanted to learn how to program in Golang, so I picked a project that would help make dealing with Big Data fun and exciting. Rinzler is a program with many different purposes but everything at the heart of the program is designed from the ground up to be a Big Data management tool.
 
 There are several major components of Rinzler that help facilitate working with Big data. I'll review each major component below.
 
