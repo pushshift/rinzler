@@ -20,7 +20,7 @@ func (b *BinarySearch) CachePerformance() float64 {
     return float64(b.cacheHits) / float64(b.cacheMisses) * 100
 }
 
-func NewBinarySearch(filename string, recordSize uint64, fieldSize uint64) *BinarySearch {
+func (r *Rinzler) NewBinarySearch(filename string, recordSize uint64, fieldSize uint64) *BinarySearch {
     var search BinarySearch
     search.fp,_ = os.OpenFile(filename, os.O_RDONLY, 0644)
     search.recordSize = recordSize

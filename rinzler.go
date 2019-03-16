@@ -1,3 +1,4 @@
+
 package rinzler
 
 import (
@@ -24,22 +25,27 @@ import (
 
 type Rinzler struct {
     Crc32table              *crc32.Table
-    ZstdCompressionLevel    int
-    ZstdDictionary          []byte
-    ZstdMagicHeader         []byte
     ZstdCDict               *gozstd.CDict
     ZstdDDict               *gozstd.DDict
+    ZstdCompressionLevel    int
+    TotalSegments           int
+    ChecksumSegments        int
+    ZstdDictionary          []byte
+    ZstdMagicHeader         []byte
 }
 
 func New() *Rinzler {
     var dict, _ = ioutil.ReadFile("/dev/shm/json/dictionary")
     rinzler := Rinzler{
         Crc32table : crc32.MakeTable(crc32.Castagnoli),
-        ZstdCompressionLevel : 3,
+        ZstdCompressionLevel : 5,
         ZstdMagicHeader : []byte{40,181,47,253},
         ZstdDictionary : dict,
     }
         rinzler.ZstdCDict,_ = gozstd.NewCDictLevel(rinzler.ZstdDictionary,rinzler.ZstdCompressionLevel)
+        rinzler.ZstdDDict,_ = gozstd.NewDDict(rinzler.ZstdDictionary)
+        rinzler.TotalSegments = 20
+        rinzler.ChecksumSegments = 2
     return &rinzler
 }
 
@@ -143,7 +149,7 @@ func main() {
 
     rinz := New()
 
-    searcher := NewBinarySearch("/dev/shm/reddit_subreddit.dat",30,22)
+    searcher := rinz.NewBinarySearch("/dev/shm/reddit_subreddit.dat",30,22)
     _ = searcher
     //loc := b.Search("askreddit")
     //fmt.Println(loc)

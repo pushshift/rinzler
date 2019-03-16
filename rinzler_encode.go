@@ -10,22 +10,25 @@ import (
     "errors"
 )
 
-
+// Calculate an 8 bit checksum from the 8 LSB bits of a CRC32 checksum
 func (r *Rinzler) Checksum8(bs []byte) uint8 {
     crc := crc32.Checksum(bs,r.Crc32table)
     return uint8(crc & ((1 << 8) - 1))
 }
 
+// Calculate a 16 bit checksum from the 16 LSB bits of a CRC32 checksum
 func (r *Rinzler) Checksum16(bs []byte) uint16 {
     crc := crc32.Checksum(bs,r.Crc32table)
     return uint16(crc & ((1 << 16) - 1))
 }
 
+// Calculate a Castagnoli CRC32 (Optimized for x86 SSE4.2 capable processors)
 func (r *Rinzler) Checksum32(bs []byte) uint32 {
     crc := crc32.Checksum(bs,r.Crc32table)
     return crc
 }
 
+// Apply zstandard (zstd) compression to a byte slice
 func (r *Rinzler) Compress(bs []byte, use_dict bool) []byte {
     if use_dict {
         compressed := gozstd.CompressDict(nil,bs,r.ZstdCDict)
@@ -35,6 +38,7 @@ func (r *Rinzler) Compress(bs []byte, use_dict bool) []byte {
     return compressed
 }
 
+// Decompress a zstandard (zstd) compressed byte slice
 func (r *Rinzler) Decompress(bs []byte, use_dict bool) ([]byte, error) {
     if use_dict {
         decompressed,err := gozstd.DecompressDict(nil,bs,r.ZstdDDict)
@@ -44,6 +48,15 @@ func (r *Rinzler) Decompress(bs []byte, use_dict bool) ([]byte, error) {
     return decompressed,err
 }
 
+// This function wraps the compression and Reed Solomon encoding functions and
+// creates a compressed record with error detection and correction capabilities
+func (r *Rinzler) CreateRecord(bs []byte) []byte {
+    compressed := r.Compress(bs,true)
+    encoded,_ := r.RSEncode(compressed,r.TotalSegments,r.ChecksumSegments,true)
+    return encoded
+}
+
+// This function is currently unavailable (in progress...) 
 func ReedSolomonCorrect(arr []byte, checksumSize ...int) error {
     checksumBytes := 2
     if len(checksumSize) > 0 {
@@ -51,7 +64,6 @@ func ReedSolomonCorrect(arr []byte, checksumSize ...int) error {
     }
     l := len(arr) - checksumBytes
     required, total := l, l+checksumBytes
-    //fmt.Printf("%d|%d\n",required,total)
     f, err := infectious.NewFEC(required, total)
     shares := make([]infectious.Share, total)
     for i := 0; i < total; i++ {
@@ -62,6 +74,10 @@ func ReedSolomonCorrect(arr []byte, checksumSize ...int) error {
     return err
 }
 
+// Decode a Reed Solomon Encoded byte string. This method will first check the available 8 bit
+// checksum and return the record if the checksum matches the calculated checksum. Otherwise, corruption
+// is assumed and the record is processed using the Berlekamp-Welch algorithm to detect the corrupted bits
+// and repair the record
 func (r *Rinzler) RSDecode(arr []byte, totalSegments uint8, checksumSize uint8) ([]byte, error) {
     const byteChecksum = 1
     const lengthMarker = 2
@@ -95,6 +111,8 @@ func (r *Rinzler) RSDecode(arr []byte, totalSegments uint8, checksumSize uint8) 
     return result[lengthMarker+reservedBytes:originalLength+lengthMarker+reservedBytes], err
 }
 
+// This method encodes a byte string using Reed Solomon FEC. This adds redundant data so that error correction
+// is possible if the record's data becomes corrupted.
 func (r *Rinzler) RSEncode(arr []byte, totalSegments int, checksumSegments int, pad bool) ([]byte, error) {
     const byteChecksum = 1
     const lengthMarker = 2
@@ -134,4 +152,3 @@ func (r *Rinzler) RSEncode(arr []byte, totalSegments int, checksumSegments int, 
     encoded = append([]byte{r.Checksum8(encoded)},encoded...)
     return encoded, err
 }
-
