@@ -1,7 +1,7 @@
 package rinzler
 
 import (
-    "pushshift"
+    _"pushshift"
     "fmt"
     _"io/ioutil"
     _"sort"
@@ -17,7 +17,31 @@ import (
     "strconv"
     "sort"
     "time"
+    "github.com/valyala/gozstd"
+    "hash/crc32"
+    "io/ioutil"
 )
+
+type Rinzler struct {
+    Crc32table              *crc32.Table
+    ZstdCompressionLevel    int
+    ZstdDictionary          []byte
+    ZstdMagicHeader         []byte
+    ZstdCDict               *gozstd.CDict
+    ZstdDDict               *gozstd.DDict
+}
+
+func New() *Rinzler {
+    var dict, _ = ioutil.ReadFile("/dev/shm/json/dictionary")
+    rinzler := Rinzler{
+        Crc32table : crc32.MakeTable(crc32.Castagnoli),
+        ZstdCompressionLevel : 3,
+        ZstdMagicHeader : []byte{40,181,47,253},
+        ZstdDictionary : dict,
+    }
+        rinzler.ZstdCDict,_ = gozstd.NewCDictLevel(rinzler.ZstdDictionary,rinzler.ZstdCompressionLevel)
+    return &rinzler
+}
 
 type author struct {
     Id uint64
@@ -61,6 +85,7 @@ const layout = "2006-01-02-%d.txt"
     fmt.Println(fmt.Sprintf(t.Format(layout), 4))
 }
 
+/*
 func read(ps *pushshift.Pushshift) {
     //var compressed []byte
     var decompressed []byte
@@ -102,7 +127,7 @@ func read(ps *pushshift.Pushshift) {
     }
     return
 }
-
+*/
 func seek() {
     f,_ := os.OpenFile("/dev/shm/reddit_subreddit.dat", os.O_RDONLY | os.O_CREATE, 0644)
     //r := bufio.NewReader(f)
@@ -116,7 +141,7 @@ func seek() {
 
 func main() {
 
-    ps := pushshift.New()
+    rinz := New()
 
     searcher := NewBinarySearch("/dev/shm/reddit_subreddit.dat",30,22)
     _ = searcher
@@ -216,9 +241,9 @@ func main() {
         subreddits[comment.Subreddit] = &subreddit{Id:subreddit_id,Name:comment.Subreddit}
         id,_ := strconv.ParseUint(comment.Id,36,64)
         records = append(records,record{Id:id,Subreddit_id:subreddit_id,Position:uint64(pos)})
-        compressed := ps.Compress(src,true)
+        compressed := rinz.Compress(src,true)
         compressed = compressed[4:]
-        encoded,_ := ps.RSEncode(compressed,18,2,true)
+        encoded,_ := rinz.RSEncode(compressed,18,2,true)
         l = len(encoded)
         //decoded,_ := ps.RSDecode(encoded,18,2)
         uncompressedTotal += len(line)
