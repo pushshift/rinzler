@@ -1,20 +1,14 @@
-
 package rinzler
 
 import (
-    _"pushshift"
     "fmt"
-    _"io/ioutil"
-    _"sort"
     "strings"
-    _"github.com/vmarkovtsev/go-lcss"
     "bufio"
     "os"
     "io"
     "bytes"
     "encoding/binary"
     "github.com/json-iterator/go"
-    _"math"
     "strconv"
     "sort"
     "time"
