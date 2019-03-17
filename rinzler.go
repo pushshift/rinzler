@@ -32,7 +32,7 @@ func New() *Rinzler {
     var dict, _ = ioutil.ReadFile("/dev/shm/json/dictionary")
     rinzler := Rinzler{
         Crc32table : crc32.MakeTable(crc32.Castagnoli),
-        ZstdCompressionLevel : 5,
+        ZstdCompressionLevel : 12,
         ZstdMagicHeader : []byte{40,181,47,253},
         ZstdDictionary : dict,
     }
