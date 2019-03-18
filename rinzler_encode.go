@@ -32,14 +32,15 @@ func (r *Rinzler) Checksum32(bs []byte) uint32 {
 func (r *Rinzler) Compress(bs []byte, use_dict bool) []byte {
     if use_dict {
         compressed := gozstd.CompressDict(nil,bs,r.ZstdCDict)
-        return compressed
+        return compressed[4:]
     }
     compressed := gozstd.Compress(nil,bs)
-    return compressed
+    return compressed[4:]
 }
 
 // Decompress a zstandard (zstd) compressed byte slice
 func (r *Rinzler) Decompress(bs []byte, use_dict bool) ([]byte, error) {
+    bs = append(r.ZstdMagicHeader,bs...)
     if use_dict {
         decompressed,err := gozstd.DecompressDict(nil,bs,r.ZstdDDict)
         return decompressed,err
@@ -52,11 +53,11 @@ func (r *Rinzler) Decompress(bs []byte, use_dict bool) ([]byte, error) {
 // creates a compressed record with error detection and correction capabilities
 func (r *Rinzler) CreateRecord(bs []byte) []byte {
     compressed := r.Compress(bs,true)
-    encoded,_ := r.RSEncode(compressed,r.TotalSegments,r.ChecksumSegments,true)
+    encoded,_ := r.RSEncode(compressed,r.DataSegments,r.ChecksumSegments,true)
     return encoded
 }
 
-// This function is currently unavailable (in progress...) 
+// This function is currently unavailable (in progress...)
 func ReedSolomonCorrect(arr []byte, checksumSize ...int) error {
     checksumBytes := 2
     if len(checksumSize) > 0 {
@@ -78,7 +79,7 @@ func ReedSolomonCorrect(arr []byte, checksumSize ...int) error {
 // checksum and return the record if the checksum matches the calculated checksum. Otherwise, corruption
 // is assumed and the record is processed using the Berlekamp-Welch algorithm to detect the corrupted bits
 // and repair the record
-func (r *Rinzler) RSDecode(arr []byte, totalSegments uint8, checksumSize uint8) ([]byte, error) {
+func (r *Rinzler) RSDecode(arr []byte, totalSegments int, checksumSegments int) ([]byte, error) {
     const byteChecksum = 1
     const lengthMarker = 2
     const reservedBytes = 2
@@ -90,9 +91,9 @@ func (r *Rinzler) RSDecode(arr []byte, totalSegments uint8, checksumSize uint8) 
     if calculatedChecksum == originalChecksum {
         return arr[lengthMarker+reservedBytes:originalLength+lengthMarker+reservedBytes],nil
     }
-    checksumSegments := int(checksumSize)
+    //checksumSegments = int(checksumSegments)
     segmentLength := len(arr) / int(totalSegments)
-    f, err := infectious.NewFEC(int(totalSegments)-checksumSegments, int(totalSegments))
+    f, err := infectious.NewFEC(int(totalSegments)-int(checksumSegments), int(totalSegments))
     shares := make([]infectious.Share, totalSegments)
     for i := 0; i < int(totalSegments); i++ {
         shares[i].Number = i
@@ -130,7 +131,6 @@ func (r *Rinzler) RSEncode(arr []byte, totalSegments int, checksumSegments int, 
         arr = append(arr, padding...)
         arrLengthWithPadding += stringAlignment
     }
-
     if stringAlignment > 0 && !pad {
         err := errors.New("The length of the string passed must be a multiple of " + strconv.Itoa(requiredSegments) + ". (Off by " + strconv.Itoa(stringAlignment) + ")")
         return nil, err

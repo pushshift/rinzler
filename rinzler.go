@@ -14,33 +14,108 @@ import (
     "time"
     "github.com/valyala/gozstd"
     "hash/crc32"
-    "io/ioutil"
+    _"io/ioutil"
+)
+
+const (
+    BYTE_CHECKSUM = 1
+    LENGTH_MARKER = 2
+    RESERVED_BYTES = 2
 )
 
 type Rinzler struct {
+    DataFile                *os.File
     Crc32table              *crc32.Table
     ZstdCDict               *gozstd.CDict
     ZstdDDict               *gozstd.DDict
     ZstdCompressionLevel    int
-    TotalSegments           int
+    DataSegments            int
     ChecksumSegments        int
     ZstdDictionary          []byte
     ZstdMagicHeader         []byte
+    FileDescription         FileDescription
+}
+
+type FileDescription struct {
+    Complete            uint8
+    Version             uint8
+    ReservedBytes       uint64
+    DataSegments        uint8
+    CheckSumSegments    uint8
+    DictionaryLen       uint64
+    RecordsStartPos     uint64
+    IndexStartPos       uint64
+    IndexEndPos         uint64
+}
+
+func (r *Rinzler) LoadFile(filename string) {
+    fp,_ := os.OpenFile(filename, os.O_RDONLY, 0644)
+    r.DataFile = fp
+    var FileData FileDescription
+    binary.Read(fp,binary.LittleEndian,&FileData)
+    r.FileDescription = FileData
+    dict := make([]byte,r.FileDescription.DictionaryLen)
+    r.DataFile.Read(dict)
+    r.SetDictionary(dict)
+
+}
+
+func (r *Rinzler) GetDataPosition(indexPos uint64) uint64 {
+    fPos := r.FileDescription.IndexStartPos + (indexPos * 13)
+    r.DataFile.Seek(int64(fPos),os.SEEK_SET)
+    record := make([]byte,13)
+    r.DataFile.Read(record)
+    //val := binary.LittleEndian.Uint64(record[5:])
+    //b64 := append(record[:5],[]byte{0,0,0}...)
+    position := binary.LittleEndian.Uint64(append(record[:5],[]byte{0,0,0}...))
+    //fmt.Print("Value: ",position)
+    return position
+}
+
+func (r *Rinzler) ReadRecord(pos int64) []byte {
+    initSize := 4096
+    b := make([]byte,initSize)
+    r.DataFile.Seek(pos,os.SEEK_SET)
+    r.DataFile.Read(b)
+    //fmt.Println(b[:5])
+    RecordLength := binary.LittleEndian.Uint16(b[BYTE_CHECKSUM:BYTE_CHECKSUM+LENGTH_MARKER])
+    //fmt.Println(RecordLength)
+    RSLength := (int(RecordLength+LENGTH_MARKER+RESERVED_BYTES) + (r.DataSegments - (int(RecordLength+LENGTH_MARKER+RESERVED_BYTES) % r.DataSegments))) / r.DataSegments * (r.DataSegments + r.ChecksumSegments)
+    //fmt.Println(RSLength)
+    if RSLength > initSize {  // Revisit this logic
+        b = make([]byte,RSLength+64)
+        r.DataFile.Seek(pos,os.SEEK_SET)
+        r.DataFile.Read(b)
+        RecordLength = binary.LittleEndian.Uint16(b[BYTE_CHECKSUM:BYTE_CHECKSUM+LENGTH_MARKER])
+        RSLength = (int(RecordLength+LENGTH_MARKER+RESERVED_BYTES) + (r.DataSegments - (int(RecordLength+LENGTH_MARKER+RESERVED_BYTES) % r.DataSegments))) / r.DataSegments * (r.DataSegments + r.ChecksumSegments)
+    }
+    //fmt.Println(b)
+    decoded,_ := r.RSDecode(b[:RSLength+BYTE_CHECKSUM],r.DataSegments+r.ChecksumSegments,r.ChecksumSegments)
+    uncompressed,_ := r.Decompress(decoded,true)
+    return uncompressed
 }
 
 func New() *Rinzler {
-    var dict, _ = ioutil.ReadFile("/dev/shm/json/dictionary")
+    //var dict, _ = ioutil.ReadFile("/dev/shm/dictionary")
     rinzler := Rinzler{
         Crc32table : crc32.MakeTable(crc32.Castagnoli),
         ZstdCompressionLevel : 12,
         ZstdMagicHeader : []byte{40,181,47,253},
-        ZstdDictionary : dict,
-    }
-        rinzler.ZstdCDict,_ = gozstd.NewCDictLevel(rinzler.ZstdDictionary,rinzler.ZstdCompressionLevel)
-        rinzler.ZstdDDict,_ = gozstd.NewDDict(rinzler.ZstdDictionary)
-        rinzler.TotalSegments = 20
+        //ZstdDictionary : dict,
+        }
+        //rinzler.ZstdCDict,_ = gozstd.NewCDictLevel(rinzler.ZstdDictionary,rinzler.ZstdCompressionLevel)
+        //rinzler.ZstdDDict,_ = gozstd.NewDDict(rinzler.ZstdDictionary)
+        rinzler.DataSegments = 10
         rinzler.ChecksumSegments = 2
     return &rinzler
+}
+
+func (r *Rinzler) SetDictionary(b []byte) error {
+    r.ZstdDictionary = b
+    var err error
+    r.ZstdCDict,err = gozstd.NewCDictLevel(r.ZstdDictionary,r.ZstdCompressionLevel)
+    r.ZstdDDict,err = gozstd.NewDDict(r.ZstdDictionary)
+    return err
 }
 
 type author struct {
